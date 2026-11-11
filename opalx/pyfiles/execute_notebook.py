@@ -12,7 +12,7 @@ from nbclient import NotebookClient
 from jupyter_client import KernelManager
 from jupyter_client.kernelspec import KernelSpecManager
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 LEGACY = ['FFA25_OPAL.ipynb','optimiseCO.py','probes_tune_calc.py','read_dat.py','plot_dat.py']
 
 
@@ -30,7 +30,7 @@ def main():
     os.environ.setdefault('MPLBACKEND','Agg')
     os.environ.setdefault('IPYTHONDIR',str(ROOT/'opalx/runs/.cache/ipython'))
     before=hashes()
-    source=ROOT/'FFA25_OPALX.ipynb'
+    source=ROOT/'opalx/FFA26_OPALX.ipynb'
     nb=nbformat.read(source,as_version=4)
     for cell in nb.cells:
         if cell.cell_type=='code': cell.outputs=[];cell.execution_count=None
@@ -41,7 +41,7 @@ def main():
                                                              '-f','{connection_file}'],
                                                         display_name='Python 3',language='python')))
         manager=KernelManager(kernel_name='python3',kernel_spec_manager=KernelSpecManager(kernel_dirs=[directory]))
-        client=NotebookClient(nb,timeout=2400,resources={'metadata':{'path':str(ROOT)}},km=manager)
+        client=NotebookClient(nb,timeout=2400,resources={'metadata':{'path':str(ROOT/'opalx')}},km=manager)
         try:
             client.execute(cleanup_kc=True)
         except Exception:

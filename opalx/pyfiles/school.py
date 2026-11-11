@@ -20,37 +20,88 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-HERE = Path(__file__).resolve().parent
-MASS_GEV = .938272
+from check_constants import evaluate
+
+HERE = Path(__file__).resolve().parent.parent
+
+
+def input_constants(text):
+    """Read native REAL arithmetic for labels and launch checks, not orbit physics."""
+    constants = {'PI': math.pi}
+    source = re.sub(r'//[^\n]*', '', text)
+    for name, expression in re.findall(r'\bREAL\s+(\w+)\s*=\s*([^;]+);', source):
+        constants[name] = evaluate(expression, constants)
+    return constants
 
 
 @dataclass(frozen=True)
 class Lattice:
     key: str
     label: str
-    energy_MeV: float
-    r0: float
-    periods: int
-    spiral: float
-    d_strength: float | None
     template: str
-    guess: tuple
+
+    @property
+    def input_path(self):
+        return HERE / self.template
+
+    @property
+    def constants(self):
+        return input_constants(self.input_path.read_text())
+
+    @property
+    def energy_MeV(self):
+        return self.constants['E0']
+
+    @property
+    def r0(self):
+        return self.constants['R0']
+
+    @property
+    def periods(self):
+        c = self.constants
+        return round(2*math.pi/c['SUPERPERIOD_ANGLE']) if 'SUPERPERIOD_ANGLE' in c else int(c['N_CELLS'])
+
+    @property
+    def spiral(self):
+        return self.constants['SPIRAL_ANGLE']
+
+    @property
+    def d_strength(self):
+        return self.constants.get('BD')
 
     @property
     def p0(self):
-        energy = self.energy_MeV * 1e-3
-        return math.sqrt(energy * (energy + 2*MASS_GEV)) / MASS_GEV
+        c = self.constants
+        return c['P0']/c['P_MASS']
+
+    @property
+    def guess(self):
+        c = self.constants
+        return (c['COF_R_GUESS']-c['R0'], c['COF_PR_GUESS'], c['COF_Y_GUESS'], c['COF_PY_GUESS'])
 
 
 CASES = (
-    Lattice('16-cell', '16 cells · original spiral', 12., 4.42, 16, 3.142/4,
-            .502765236428169, 'school-16-cell.in',
-            (-.027074444530417, .01628038887873, 0., 0.)),
-    Lattice('55deg-d-off', '55° spiral · D off', 12., 4.42, 16, math.radians(55.),
-            0., 'school-16-cell.in', (-.25673629772097417, .017567795069157878, 0., 0.)),
-    Lattice('fourfold', 'Fourfold ring · 3 MeV', 3., 4., 4, math.pi/6, None,
-            'school-fourfold-3MeV.in', (-.015031241051561395, .0087047468374380575, 0., 0.)),
+    Lattice('16-cell', '16-cell ring · 12 MeV', 'school-16-cell/school-16-cell.in'),
+    Lattice('55deg-d-off', '55° spiral · D off', 'school-55deg-d-off/school-55deg-d-off.in'),
+    Lattice('fourfold', 'Fourfold ring · 3 MeV', 'school-fourfold-3MeV/school-fourfold-3MeV.in'),
 )
+
+
+def settings_table(case):
+    """Show the controls actually read from this machine's input."""
+    text = case.input_path.read_text()
+    command = re.search(r'\bORBIT\s*:\s*COF\s*,([^;]+);', text, re.S)[1]
+    integrator = re.search(r'TIMEINTEGRATOR\s*=\s*"([^"\n]+)"', command)[1]
+    c = case.constants
+    values = {'Input': case.template, 'Energy [MeV]': c['E0'], 'R0 [m]': c['R0'],
+              'Field index k': c['K_VAL'], 'Spiral [deg]': math.degrees(c['SPIRAL_ANGLE']),
+              'Optical periods': case.periods, 'COF integrator': integrator,
+              'COF DT [ns]': c['COF_DT']*1e9, 'COF FDSTEP [m]': c['COF_FDSTEP'],
+              'COF MAXSTEPS': int(c['COF_MAXSTEPS']),
+              'COF XTOL [m]': c['COF_XTOL'], 'COF PTOL [p/(mc)]': c['COF_PTOL'],
+              'Tracking DT [ns]': c['TRACK_DT']*1e9, 'Tracking turns': int(c['NUM_TURNS']),
+              'HDF5 dump interval': int(c['DUMP_EVERY'])}
+    return pd.DataFrame(values.items(), columns=['Parameter', 'Value'])
 
 
 def find_executable(value=None):
@@ -77,8 +128,8 @@ def _set_constants(text, values):
 
 
 def lattice_text(case):
-    """Native REAL formulas retain the old writer's parameter relationships."""
-    source = re.sub(r'//[^\n]*','',(HERE/case.template).read_text())
+    """Retain this machine's native constants and geometry without substitutions."""
+    source = re.sub(r'//[^\n]*','',case.input_path.read_text())
     lines = []
     for statement in source.split(';'):
         statement = ' '.join(statement.split())
@@ -88,12 +139,7 @@ def lattice_text(case):
             lines.append(statement+';')
     if sum(bool(re.search(r'\bEND_FIELD_MODEL\s*=',line)) for line in lines) != 32:
         raise ValueError('Expected exactly 32 physical magnets in the template')
-    spiral = ('3.142/4' if math.isclose(case.spiral,3.142/4,rel_tol=0,abs_tol=1e-15) else
-              '55*DEGREE' if math.isclose(case.spiral,math.radians(55),rel_tol=0,abs_tol=1e-15) else
-              'PI/6' if math.isclose(case.spiral,math.pi/6,rel_tol=0,abs_tol=1e-15) else repr(case.spiral))
-    values = dict(R0=case.r0,E0=case.energy_MeV,P_MASS='938.272',SPIRAL_ANGLE=spiral)
-    if case.d_strength is not None: values['BD'] = case.d_strength
-    return _set_constants('\n'.join(lines),values)
+    return '\n'.join(lines)
 
 
 def _definitions(case, overrides):
@@ -122,7 +168,7 @@ def _fresh(path):
 
 def _manifest(path, case, settings):
     info = dict(case=case.__dict__, settings=settings,
-                template_sha256=hashlib.sha256((HERE/case.template).read_bytes()).hexdigest(),
+                template_sha256=hashlib.sha256(case.input_path.read_bytes()).hexdigest(),
                 input_sha256=hashlib.sha256((path/'school.in').read_bytes()).hexdigest())
     (path/'manifest.json').write_text(json.dumps(info, indent=2)+'\n')
 
@@ -208,30 +254,27 @@ def format_input(text):
     return ''.join(blocks).strip()+'\n'
 
 
-def prepare_cof(case, path, dt=1e-10, fd=1e-6, guess_offset=(0.,0.,0.,0.)):
-    if dt <= 0 or fd <= 0: raise ValueError('DT and FDSTEP must be positive')
+def prepare_cof(case, path, dt=None, fd=None, guess_offset=(0.,0.,0.,0.)):
+    """Copy the standalone solve verbatim; override controls only when requested."""
+    if (dt is not None and dt <= 0) or (fd is not None and fd <= 0):
+        raise ValueError('DT and FDSTEP must be positive')
     offset = np.asarray(guess_offset, dtype=float)
     if offset.shape != (4,) or not np.isfinite(offset).all():
         raise ValueError('guess_offset must contain four finite coordinates')
+    text = case.input_path.read_text()
+    overrides = {}
+    if dt is not None: overrides['COF_DT'] = dt
+    if fd is not None: overrides['COF_FDSTEP'] = fd
+    if np.any(offset):
+        x, px, y, py = np.asarray(case.guess)+offset
+        overrides.update(COF_R_GUESS=f'R0+({x:.17g})', COF_PR_GUESS=px,
+                         COF_Y_GUESS=y, COF_PY_GUESS=py)
+    text = _set_constants(text, overrides)
     path = _fresh(path)
-    x, px, y, py = np.asarray(case.guess)+offset
-    constants,geometry = _definitions(case,dict(
-        COF_DT=dt, COF_FDSTEP=fd, COF_MAXSTEPS=100000,
-        COF_R_GUESS=f'R0+({x:.17g})',COF_PR_GUESS=px,COF_Y_GUESS=y,COF_PY_GUESS=py,
-        PS_DUMP_FREQ=0,STAT_DUMP_FREQ=1000))
-    lines = ['OPTION, ECHO=FALSE;',constants,
-             'OPTION, ENABLEHDF5=FALSE, ENABLELINEARTRANSFERMAPS=FALSE, '
-             'PSDUMPFREQ=PS_DUMP_FREQ, STATDUMPFREQ=STAT_DUMP_FREQ, '
-             'REPARTFREQ=REPART_FREQ, VERSION=INPUT_VERSION;',geometry]
-    lines += _source_lines(case)
-    lines += ['ORBIT: COF, LINE=SCHOOL, BEAM=BEAM1, DT=COF_DT, TIMEINTEGRATOR="DOP853", '
-              'MAXPATH=COF_MAXPATH, MAXSTEPS=COF_MAXSTEPS, X=COF_R_GUESS-R0, '
-              'PX=COF_PR_GUESS, Y=COF_Y_GUESS, PY=COF_PY_GUESS, '
-              'FDSTEP={COF_FDSTEP,COF_FDSTEP*BG,COF_FDSTEP,COF_FDSTEP*BG}, '
-              'SCALES={POSITION_SCALE,BG,POSITION_SCALE,BG}, '
-              'XTOL=COF_XTOL, PTOL=COF_PTOL, MAXIT=COF_MAXIT, OUTPUT="orbit.json";', 'STOP;']
-    (path/'school.in').write_text(format_input('\n'.join(lines)+'\n'))
-    _manifest(path, case, dict(kind='COF', dt=dt, fd=fd, guess_offset=offset.tolist()))
+    (path/'school.in').write_text(text)
+    c = input_constants(text)
+    _manifest(path, case, dict(kind='COF', dt=c['COF_DT'], fd=c['COF_FDSTEP'],
+                              guess_offset=offset.tolist()))
     return path
 
 
@@ -241,8 +284,10 @@ def execute(path, executable, flags=None, timeout=2400):
     if (path/'run.log').exists(): raise FileExistsError('Use a fresh run directory; run.log exists')
     env = dict(os.environ, OMP_NUM_THREADS='1', OMP_PROC_BIND='false')
     env.pop('OPALX_TEST_PASSIVE_RING_PROBES', None)
-    command = ['mpiexec', *(mpi_flags() if flags is None else flags), '-n', str(ranks),
-               str(find_executable(executable)), '--info', '1', 'school.in']
+    launcher = shlex.split(os.environ.get('OPALX_LAUNCHER', ''))
+    options = mpi_flags() if flags is None else flags
+    if options and not launcher: launcher = ['mpiexec', '-n', '1']
+    command = [*launcher, *options, str(find_executable(executable)), '--info', '1', 'school.in']
     print(f'Running {path.name} on {ranks} rank(s); log: {path / "run.log"}', flush=True)
     with (path/'run.log').open('w') as stream:
         try:
@@ -266,7 +311,8 @@ def read_cof(case, path):
     if abs(result['energy_MeV']-case.energy_MeV) > 1e-8:
         raise RuntimeError('COF energy does not match this exercise')
     residual = np.asarray(result['residual'])
-    if max(abs(residual[[0,2]])) > 1e-10 or max(abs(residual[[1,3]])) > 1e-11:
+    c = input_constants((path/'school.in').read_text())
+    if max(abs(residual[[0,2]])) > c['COF_XTOL'] or max(abs(residual[[1,3]])) > c['COF_PTOL']:
         raise RuntimeError('Closed-orbit residual exceeds configured tolerances')
     for field in ['coordinates', 'position_m', 'momentum_mc']:
         if not np.isfinite(result[field]).all(): raise RuntimeError(f'Nonfinite {field}')
@@ -289,8 +335,12 @@ def results_table(results):
                          for case, result in results])
 
 
-def prepare_tracking(case, result, path, turns=3, dt=5e-11, displacement=1e-3,
-                     dump_every=20, maps=True):
+def prepare_tracking(case, result, path, turns=None, dt=None, displacement=1e-3,
+                     dump_every=None, maps=True):
+    c = case.constants
+    turns = int(c['NUM_TURNS']) if turns is None else turns
+    dt = c['TRACK_DT'] if dt is None else dt
+    dump_every = int(c['DUMP_EVERY']) if dump_every is None else dump_every
     if not isinstance(turns,int) or turns < 1 or turns > 100: raise ValueError('turns must be 1..100')
     if dt <= 0 or displacement <= 0 or not isinstance(dump_every,int) or dump_every < 1:
         raise ValueError('Positive DT, displacement and integer dump frequency required')
@@ -302,7 +352,7 @@ def prepare_tracking(case, result, path, turns=3, dt=5e-11, displacement=1e-3,
         r = position+displacement*np.array([radial,vertical,0.])
         rows.append(' '.join(f'{v:.17g}' for v in [r[0],momentum[0],r[1],momentum[1],r[2],momentum[2]]))
     (path/'particles.dat').write_text('8\nx px y py z pz\n'+'\n'.join(rows)+'\n')
-    constants,geometry = _definitions(case,dict(TRACK_DT=dt,NUM_TURNS=turns,DUMP_EVERY=dump_every,STAT_DUMP_FREQ=1000))
+    constants,geometry = _definitions(case,dict(TRACK_DT=dt,NUM_TURNS=turns,DUMP_EVERY=dump_every,N_PARTICLES=8,BUNCH_CHARGE=0))
     lines = ['OPTION, ECHO=FALSE;',constants,
              'OPTION, ENABLEHDF5=TRUE, ENABLELINEARTRANSFERMAPS=FALSE, '
              'PSDUMPFREQ=DUMP_EVERY, STATDUMPFREQ=STAT_DUMP_FREQ, '
