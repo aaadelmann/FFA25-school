@@ -13,3 +13,14 @@ HANDOFF-CONSTANTS.md
 opalx/README.md
 
 opalx/check_constants.py
+
+# Generated results in the reorganized School hierarchy stay local.
+/opalx/**/*.json
+/opalx/**/*.h5
+/opalx/**/*.stat
+/opalx/**/timing.dat
+/opalx/**/run.log
+/opalx/**/data/
+# Local documentation and developer audit material.
+/docs/
+runs/

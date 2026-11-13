@@ -1,0 +1,309 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=24mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,microtype,amsmath,amssymb,booktabs,graphicx,tikz}
+\usepackage{needspace,float}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\usetikzlibrary{arrows.meta,calc}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\degunit}{^{\circ}}
+\title{The three School scaling FFA rings\\\large Field model, magnet placement and space charge}
+\author{A Adelmann}
+\date{13 November 2026}
+\begin{document}
+\maketitle
+\vspace{-2em}
+The School contains three fixed-energy proton lattices. Two repeat one F/D cell
+sixteen times at 12 MeV. The third repeats four unequal F/D pairs four times at
+3 MeV. All lengths below are in metres, fields in tesla and angles in radians
+unless degrees are shown explicitly.
+
+\begin{table}[h]
+\centering
+\caption{Parameters of the three inputs. $R_0$ is the geometric reference radius,
+not the closed-orbit launch radius.}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Lattice & $T$ [MeV] & $R_0$ [m] & $k$ & $\delta$ & Periods\\
+\midrule
+16-cell F/D & 12 & 4.42 & 7.7170220643 & $45.005835\degunit$ & 16\\
+$55\degunit$, D off & 12 & 4.42 & 7.7170220643 & $55\degunit$ & 16\\
+Fourfold & 3 & 4.00 & 7.4319 & $30\degunit$ & 4\\
+\bottomrule
+\end{tabular}
+\end{table}
+The fourth directory, \texttt{school-16-cell-probe}, adds diagnostic probes to the
+first magnetic lattice. It is not a fourth machine. Its beam launch and tracking
+settings may differ; its geometry export still describes the same magnet layout.
+
+\section{Coordinates and absolute placement}
+The ring lies in the global $X$--$Z$ plane, with $Y$ vertical. The launch origin
+lies near the beam, whose initial forward direction is $+Z$. The reference
+circle has centre $\vect C=(-R_0,0,0)$:
+\begin{equation}
+ \vect R(\varphi)=\begin{pmatrix}R_0(\cos\varphi-1)\\0\\R_0\sin\varphi\end{pmatrix},
+ \quad s=R_0\varphi,\quad
+ \vect t(\varphi)=\begin{pmatrix}-\sin\varphi\\0\\\cos\varphi\end{pmatrix}.
+ \label{eq:circle}
+\end{equation}
+Here $s$ is reference arc length and $\vect t$ the unit tangent. A magnet with
+entrance azimuth $\alpha_i$ uses the explicit OPALX pose
+\begin{equation}
+ \boxed{\begin{aligned}
+ X_i&=R_0(\cos\alpha_i-1),&Y_i&=0,&Z_i&=R_0\sin\alpha_i,\\
+ \texttt{THETA}_i&=-\alpha_i,&\texttt{PHI}_i&=0,&\texttt{PSI}_i&=0.
+ \end{aligned}}
+ \label{eq:pose}
+\end{equation}
+The position denotes the \emph{entrance}, not the body centre. Local $x$ points
+radially outwards and local $z$ follows the entrance tangent. The transformation
+from local coordinates to the laboratory is
+\begin{equation}
+ \vect r=\vect R(\alpha_i)+Q_i\vect r_i,\qquad
+ Q_i=\begin{pmatrix}\cos\alpha_i&0&-\sin\alpha_i\\0&1&0\\
+ \sin\alpha_i&0&\cos\alpha_i\end{pmatrix}.
+ \label{eq:transform}
+\end{equation}
+Consequently, $Q_i(0,0,1)^{\mathsf T}=\vect t(\alpha_i)$ and
+$\vect R(\alpha_i)+Q_i(-R_0,0,0)^{\mathsf T}=\vect C$.
+Every element therefore shares the same curvature centre. A body of arc length
+$\ell_i$ exits at $\vect R(\alpha_i+\ell_i/R_0)$.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[scale=.63,>=Stealth,font=\small]
+ \coordinate (C) at (0,0); \coordinate (O) at (3,0); \coordinate (P) at (42:3);
+ \draw[gray!65] (C) circle (3);
+ \draw[dashed] (C)--(O) (C)--(P);
+ \draw[->] (.75,0) arc[start angle=0,end angle=42,radius=.75];
+ \node at (22:1.2) {$\alpha_i$};
+ \draw[->,very thick,blue!70!black] (O)--(P) node[midway,left=-4pt] {$\vect R(\alpha_i)$};
+ \draw[->,thick] (O)--++(1.35,0) node[right] {$X$};
+ \draw[->,thick] (O)--++(0,1.1) node[above] {$Z$};
+ \draw[->,thick,red!70!black] (P)--++(42:1.05) node[above right] {$x_i$};
+ \draw[->,thick,red!70!black] (P)--++(132:1.05) node[above left] {$z_i$};
+ \fill (C) circle (2pt) node[below] {$C=(-R_0,0,0)$};
+ \fill (O) circle (2pt) node[below right] {$O=(0,0,0)$};
+ \fill (P) circle (2pt);
+ \node at (-1.5,-3.5) {$Y$ is normal to the page};
+\end{tikzpicture}
+\caption{Entrance placement in the horizontal plane. The blue vector gives the
+translation from $O$ to the entrance. The red local axes are radial and tangential.
+The reference circle is a geometry construction, not a tracked particle orbit.}
+\label{fig:placement}
+\end{figure}
+
+The fringe-model centre is halfway along the nominal body:
+\begin{equation}
+ \varphi_{c,i}=\alpha_i+\frac{\ell_i}{2R_0}.
+ \label{eq:centre}
+\end{equation}
+
+\section{Spiral faces and fringe fields}
+For positive $R_0$, the common cylindrical and spiral coordinates are
+\begin{equation}
+ \begin{split}
+ r&=\sqrt{(X+R_0)^2+Z^2},\qquad
+ \varphi=\operatorname{atan2}(Z,X+R_0),\\
+ \chi_i&=\varphi-\varphi_{c,i}-\tan\delta\ln(r/R_0).
+ \end{split}
+ \label{eq:spiral}
+\end{equation}
+The azimuth uses the branch local to the element. Constant $\chi_i$ describes a
+logarithmic spiral. In particular, the nominal body faces satisfy
+\begin{equation}
+ \boxed{\begin{aligned}
+ \varphi_{i,\rm in}(r)&=\alpha_i+\tan\delta\ln(r/R_0),\\
+ \varphi_{i,\rm out}(r)&=\alpha_i+\ell_i/R_0+\tan\delta\ln(r/R_0).
+ \end{aligned}}
+ \label{eq:faces}
+\end{equation}
+Since $r\,\mathrm{d}\varphi/\mathrm{d}r=\tan\delta$, a face makes the constant
+angle $\delta$ with the radial direction. Changing $\delta$ changes the face
+shape, while leaving its entrance at $r=R_0$ fixed.
+
+The midplane scaling law separates radial strength and azimuthal fringe shape:
+\begin{equation}
+ B_Y(r,0,\varphi)=\left(\frac{r}{R_0}\right)^k\sum_i B_{0i}F_i(R_0\chi_i).
+ \label{eq:field}
+\end{equation}
+\Needspace{7\baselineskip}
+The sum includes elements whose field support contains the evaluation point.
+The School uses symmetric parameters within an \texttt{ASYMMETRIC\_ENGE} model:
+\begin{equation}
+ E(u)=\frac{1}{1+\exp[\sum_{n=0}^{n_a}a_n(u/\lambda)^n]},\qquad
+ F_i(s)=E(-s-\ell_i/2)+E(s-\ell_i/2)-1.
+ \label{eq:enge}
+\end{equation}
+Here $\lambda$ is the fringe-length parameter and $\ell_i$ the fringe model's
+centre length. Neither is an integrated magnetic length. The nominal faces are
+not exact half-field contours for a general Enge polynomial; fields extend
+beyond them. The vertical field expansion retains
+\texttt{MAX\_Y\_POWER=4}.
+
+The aperture is $R_0-\Delta r_-\leq r\leq R_0+\Delta r_+$,
+$|Y|\leq H/2$. The input \texttt{AZIMUTHAL\_EXTENT} is a length $A$; its angular
+support is $|\chi_i|\leq A/R_0$. All three machines use
+$A=R_0(2\pi/16)$. This window is wider than the body and permits overlapping
+fringe contributions in Eq.~\eqref{eq:field}.
+
+\clearpage
+\section{Sixteen-cell F/D ring at 12 MeV}
+The reference circumference is $2\pi R_0=27.771679$ m. Let
+$\Delta=2\pi/16=22.5\degunit$. The sixteen cells have entrance azimuths
+\begin{equation}
+ \boxed{\alpha_{j,F}=6.5425\degunit+j\Delta,\qquad
+        \alpha_{j,D}=13.40625\degunit+j\Delta.}
+ \label{eq:uniform}
+\end{equation}
+Here $j=0,\ldots,15$. The centre azimuths are $8.7925\degunit+j\Delta$ and
+$14.53125\degunit+j\Delta$. The lengths are $\ell_F=0.3471459882$ m and
+$\ell_D=0.1735729941$ m.
+
+The OPALX field coefficients are $B_{0F}=+0.6532097983$ T and
+$B_{0D}=-0.5027652364$ T. The input uses $\delta=3.142/4$ rad, rather than exactly
+$\pi/4$. Its Enge coefficients are
+$(a_0,a_1,a_2,a_3)=(-1.3,3.42,-1.20,0.23)$ with $\lambda=0.12$ m.
+The aperture parameters are $\Delta r_-=0.8$ m, $\Delta r_+=1.2$ m and $H=1$ m.
+Zero-field arcs fill the gaps between bodies and close the reference geometry.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.55\textwidth]{school-16-cell-plan.pdf}
+\caption{Sixteen-cell F/D ring at 12 MeV. F bodies are blue, D bodies red; zero-field arcs are grey. The dashed circle has radius $R_0$; the black dot marks the global origin.
+The horizontal coordinate is translated by $R_0$ to centre the ring.
+No particle trajectory is plotted.}
+\end{figure}
+
+\clearpage
+\input{space-charge-model}
+
+\clearpage
+\section{The \texorpdfstring{$55\degunit$}{55-degree} ring with D magnets off}
+The second machine keeps the first ring's radius, energy, field index, Enge
+coefficients, apertures, body lengths and absolute entrance poses. It changes
+only the spiral angle and D strength:
+\begin{equation}
+ \delta=55\degunit,\qquad B_{0F}=+0.6532097983\ \mathrm{T},\qquad B_{0D}=0.
+\end{equation}
+Sixteen F magnets remain active. The sixteen D elements retain their nominal
+arcs and apertures but contribute no field. Turning them off is therefore
+distinct from deleting their geometry or shifting the F magnets. The larger
+spiral angle changes each F face's radial sweep through Eq.~\eqref{eq:faces}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.55\textwidth]{school-55deg-d-off-plan.pdf}
+\caption{The $55\degunit$ ring with D magnets off. Active F bodies are blue; dashed red arcs mark the zero-field D elements. The dashed circle has radius $R_0$; the black dot marks the global origin.
+The horizontal coordinate is translated by $R_0$ to centre the ring.
+No particle trajectory is plotted.}
+\end{figure}
+
+\clearpage
+\section{Fourfold ring at 3 MeV}
+The reference circumference is $2\pi R_0=25.132741$ m. Sixteen F/D pairs form
+four repetitions of a four-pair superperiod. The pairs differ in both strength
+and spacing; the complete ring has fourfold, not sixteenfold, symmetry.
+The input's \texttt{N\_CELLS=16} specifies the nominal pair count.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.55\textwidth]{school-fourfold-3MeV-plan.pdf}
+\caption{Fourfold ring at 3 MeV. F bodies are blue, D bodies red; zero-field arcs are grey. The dashed circle has radius $R_0$; the black dot marks the global origin.
+The horizontal coordinate is translated by $R_0$ to centre the ring.
+No particle trajectory is plotted.}
+\end{figure}
+
+
+For $\Delta=2\pi/16$, the angular spacing corrections are
+\begin{equation}
+ (\epsilon_1,\epsilon_2,\epsilon_3,\epsilon_4)
+       =(-0.0125,-0.125,-0.0125,+0.15).
+\end{equation}
+These numbers are in \emph{radians}. Each pair occupies the reference arc
+$R_0(\Delta+\epsilon_j)$, while its body lengths remain
+\begin{equation}
+ \ell_F=0.2\Delta R_0=0.3141592654\ \mathrm{m},\qquad
+ \ell_D=0.1\Delta R_0=0.1570796327\ \mathrm{m}.
+\end{equation}
+Define the angular pair starts within a superperiod by
+\begin{equation}
+ q_1=0,\qquad q_j=\sum_{h=1}^{j-1}(\Delta+\epsilon_h).
+\end{equation}
+Since $\sum_j\epsilon_j=0$, four pairs span exactly $4\Delta=\pi/2$.
+For superperiod $m=0,1,2,3$, set
+$\Phi_m=\Phi_0+m\pi/2$ with
+$\Phi_0=(0.6\Delta+0.15)/2=0.1928097245$ rad. The entrance angles are
+\begin{equation}
+ \boxed{\begin{aligned}
+ \alpha_{m,j,F}&=\Phi_m+q_j-0.075\Delta,\\
+ \alpha_{m,j,D}&=\Phi_m+q_j+0.2625\Delta.
+ \end{aligned}}
+ \label{eq:fourfold}
+\end{equation}
+Combining Eqs.~\eqref{eq:pose} and \eqref{eq:fourfold} specifies every entrance
+translation and rotation. The first-superperiod values are listed below.
+
+\begin{table}[ht]
+\centering
+\caption{Fourfold superperiod. These are OPALX $B_0$ values; all rows repeat at
+azimuth increments of $90\degunit$.}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+$j$ & $B_{0F}$ [T] & $B_{0D}$ [T] & $\epsilon_j$ [rad] & $\alpha_{0,j,F}$ [$^\circ$] & $\alpha_{0,j,D}$ [$^\circ$]\\
+\midrule
+1 & 0.370973 & $-0.364563$ & $-0.0125$ & 9.359683 & 16.953433\\
+2 & 0.314173 & $-0.330844$ & $-0.1250$ & 31.143486 & 38.737236\\
+3 & 0.338564 & $-0.369984$ & $-0.0125$ & 46.481514 & 54.075264\\
+4 & 0.434163 & $-0.464282$ & $+0.1500$ & 68.265317 & 75.859067\\
+\bottomrule
+\end{tabular}
+\end{table}
+\pagebreak
+The remaining parameters are $k=7.4319$, $\delta=\pi/6$, $\lambda=0.14$ m and
+a linear Enge polynomial $(a_0,a_1)=(0,3.91)$. The aperture parameters are
+$\Delta r_-=0.15$ m, $\Delta r_+=0.8$ m and $H=1$ m.
+Zero-field arcs again complete the reference geometry.
+
+\section{Native geometry and orbit checks}
+The machine figures use vertices stored in native
+\texttt{\_ElementPositions.py} files. The footprints are nominal aperture/display
+volumes, not mechanical yokes or full fringe-field envelopes.
+
+The companion script decodes the compressed vertices without executing the
+plotting code. It matches every mesh to an input pose and checks the spiral
+centre and face angles, radial bounds and total arc length. All 65 nominal
+elements per ring agree with Eqs.~\eqref{eq:pose} and \eqref{eq:faces}; the maximum
+angular mismatch is below $2\times10^{-15}$ rad. This verifies the geometry
+conversion, not the accuracy of a tracking integrator.
+
+The existing native COF outputs give the values below. At the $Z=0$ section,
+$R_{\rm co}=R_0+X_{\rm co}$ and $Y=P_Y=0$. Thus $R_0$ fixes the placement circle,
+while the magnetic fields determine a different closed orbit. \\
+\begin{table}[ht]
+\centering
+\caption{Closed-orbit launch radii and full tunes read from the existing
+\texttt{orbit.json} files in the three machine directories.}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Lattice & $R_{\rm co}$ [m] & $Q_r$ & $Q_Y$\\
+\midrule
+16-cell F/D & 4.392925555 & 3.41066045 & 3.39111214\\
+$55\degunit$, D off & 4.163263702 & 3.11774002 & 1.18920986\\
+Fourfold & 3.984968759 & 3.44738596 & 3.43884713\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%\paragraph{Source files.}
+%The inputs are \path{../school-16-cell/school-16-cell.in},
+%\path{../school-55deg-d-off/school-55deg-d-off.in} and
+%\path{../school-fourfold-3MeV/school-fourfold-3MeV.in}.
+%The current probe export is in
+%\path{../school-16-cell-probe/data/school-16-cell-probe_ElementPositions.py}.
+%Fresh native exports of the three inputs are retained in \path{geometry-data/};
+%\path{make_geometry.py} reproduces the checks and figure. Conventions were checked
+%against OPALX's \texttt{ScalingFFASupport}, \texttt{PlacementResolver} and
+%\texttt{MeshGenerator}. The old notebook and all machine inputs remain unchanged.
+\end{document}
