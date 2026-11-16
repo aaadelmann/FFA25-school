@@ -21,3 +21,11 @@ opalx/check_constants.py
 # Local documentation and developer audit material.
 /docs/
 runs/
+# Installation-guide build outputs stay local; commit the .tex source and logo.
+/opalx/FFA26_school_install.pdf
+/opalx/FFA26_school_install.aux
+/opalx/FFA26_school_install.log
+/opalx/FFA26_school_install.out
+/opalx/FFA26_school_install.synctex.gz
+/opalx/FFA26_school_install.fdb_latexmk
+/opalx/FFA26_school_install.fls
