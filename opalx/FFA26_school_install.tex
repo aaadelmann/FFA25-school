@@ -111,93 +111,84 @@ python -m pip install numpy pandas matplotlib h5py \
 The Python environment runs locally, not inside the OPALX runtime container.
 All commands in the next section use this same activated environment.
 
-\section{Connect the notebook to Docker}
-The notebook expects an executable named by \texttt{OPALX\_EXE}. Create a small
-launcher in the Python environment; it forwards each OPALX invocation to Docker:
-\begin{commands}
-cat > "$VIRTUAL_ENV/bin/opalx-docker" <<'SH'
-#!/bin/sh
-set -eu
-: "${FFA_SCHOOL:?Set FFA_SCHOOL to the course root}"
-: "${OPALX_IMAGE:?Set OPALX_IMAGE to the workshop image}"
-FFA_RUN_DIR="$(pwd -P)"
-case "$FFA_RUN_DIR/" in
-  "$FFA_SCHOOL/"*) ;;
-  *) echo "Run from inside FFA_SCHOOL" >&2; exit 2 ;;
-esac
-exec docker run --rm \
-  --user "$(id -u):$(id -g)" \
-  -e OPALX_NP=1 -e OMP_NUM_THREADS=1 \
-  -e OMP_PROC_BIND=false \
-  --mount "type=bind,src=$FFA_SCHOOL,dst=$FFA_SCHOOL" \
-  --workdir "$FFA_RUN_DIR" \
-  "$OPALX_IMAGE" "$@"
-SH
-chmod +x "$VIRTUAL_ENV/bin/opalx-docker"
-export OPALX_EXE="$VIRTUAL_ENV/bin/opalx-docker"
-unset OPALX_LAUNCHER OPALX_MPI_FLAGS
-"$OPALX_EXE" --version-full --info 5
-\end{commands}
-The launcher uses one MPI rank and one OpenMP thread. It mounts the whole
-course at the \emph{same absolute path} inside the container and keeps the
-current run directory. This matters because the notebook writes absolute
-field-map output paths. Results are therefore available to local Python and
-remain on your computer after the container exits. The user/group option
-keeps output ownership consistent on Linux.
-
-\clearpage
-\section{Check one ring, then open the notebook}
-Before running the lessons, check a standalone native closed-orbit calculation:
-\begin{commands}
-cd "$FFA_SCHOOL/opalx/school-16-cell"
-"$OPALX_EXE" school-16-cell.in --info 1
-\end{commands}
-OPALX should report a verified closed orbit, a stable one-turn eigenanalysis,
-and \texttt{Full tunes (uncoupled planar)}. For the unchanged 12 MeV input,
-expect approximately $Q_r=3.41066$ and $Q_Y=3.39111$. The generated
-\texttt{orbit.json} stays beside this input. If full tunes are missing, check
-the image revision with the organisers before continuing.
-
-Start Jupyter from the same terminal, retaining the exported variables:
+\section{Open the notebook and select Docker}
+Start Jupyter from the activated Python environment:
 \begin{commands}
 cd "$FFA_SCHOOL/opalx"
 python -m jupyterlab FFA26_OPALX.ipynb
 \end{commands}
-Open the displayed local URL in your browser and use the Python kernel from
-\texttt{.venv-ffa26}. Leave \texttt{EXECUTABLE = None} in the notebook so it uses
-\texttt{OPALX\_EXE}. Run from the top: original ring, 55-degree/D-off variant,
-then fourfold ring. Each input supplies its validated numerical settings.
-The notebook creates a fresh directory under \path{opalx/runs/}; its new COF
-JSON supplies the closed state and full tunes used by the tracking lesson.
-It does not load the standalone JSON snapshot.
+Open the displayed local URL and select the environment's Python kernel.
+The notebook's first setup cell explicitly selects the simulation backend:
+\begin{commands}
+BACKEND = "docker"
+IMAGE = "ghcr.io/opalx-project/opalx:cpu"
+EXECUTABLE = None
+\end{commands}
+Leave these defaults for the workshop, or replace \texttt{IMAGE} with the
+organisers' image reference. To select the image pinned in Section~2, paste
+the printed digest reference into \texttt{IMAGE}. The notebook does not read
+\texttt{OPALX\_IMAGE} or \texttt{OPALX\_EXE} from your shell.
+
+Run the setup cell. It checks the Docker server and local image, displays the
+backend, image digest, architecture, OPALX version and revision, and fixes the
+image for this session. If Docker or the image is missing, it stops with an
+error; it never switches to a local OPALX executable. Download the image first
+with \texttt{docker pull}, then retry the setup cell.
+
+No launcher script or host MPI setup is needed. The existing helper starts
+Docker directly with one MPI rank and one OpenMP thread. It mounts the whole
+course at the same absolute path inside the container, so local Python can
+read the generated field maps and particle data. The run manifests record the
+selected backend, image identity and actual command. Results persist after
+the container exits.
+
+\clearpage
+\section{Run the three School lessons}
+Run all cells from the top. Complete the original 16-cell ring before the
+55-degree/D-off variant and then the fourfold ring. Each machine's input
+supplies its validated numerical settings. The native COF report should show
+a verified closed orbit, a stable one-turn eigenanalysis and full tunes.
+For the unchanged 12 MeV original ring, expect approximately
+$Q_r=3.41066$ and $Q_Y=3.39111$.
+
+The notebook creates a fresh directory under \path{opalx/runs/}. Its new COF
+JSON supplies the closed state and full tunes used for tracking; standalone
+JSON snapshots are not loaded. Keep these generated results local. Restart
+the kernel and run from the top when starting another experiment.
 
 \subsection*{Returning later}
-Start Docker, activate the environment, and repeat these exports before
-starting Jupyter. Replace the image reference with your recorded workshop
-reference if the organisers specify a digest:
+Start Docker, activate Python and open the notebook. No executable or launcher
+exports are needed:
 \begin{commands}
 source "$HOME/.venv-ffa26/bin/activate"
-cd /path/to/FFA25-school
-export FFA_SCHOOL="$(pwd -P)"
-export OPALX_IMAGE=ghcr.io/opalx-project/opalx:cpu
-export OPALX_EXE="$VIRTUAL_ENV/bin/opalx-docker"
-unset OPALX_LAUNCHER OPALX_MPI_FLAGS
-cd opalx
+cd /path/to/FFA25-school/opalx
 python -m jupyterlab FFA26_OPALX.ipynb
 \end{commands}
+Keep the selected image reference in the notebook's setup cell. Pull a new
+image only when you intend to update it; a running session keeps using its
+original image.
+
+\subsection*{Optional native mode}
+For a locally installed OPALX build, edit the setup cell explicitly:
+\begin{commands}
+BACKEND = "native"
+EXECUTABLE = "/absolute/path/to/opalx"
+\end{commands}
+The helper checks this executable and displays its version and revision.
+Only native mode uses optional \texttt{OPALX\_LAUNCHER} or
+\texttt{OPALX\_MPI\_FLAGS} settings. Return \texttt{BACKEND} to
+\texttt{"docker"} for the workshop container.
 
 \section{If a check fails}
 \begin{itemize}
 \item \textbf{Docker server unavailable:} start Docker Desktop or the Linux
 Docker service, then repeat \texttt{docker version}.
 \item \textbf{Mount denied or output path missing:} allow Docker Desktop to
-share the course directory. Check that \texttt{FFA\_SCHOOL} is the course root
-and that you are using the launcher above, rather than mounting only a single
-run folder at \texttt{/data}.
-\item \textbf{Notebook cannot find OPALX:} check
-\texttt{echo "\$OPALX\_EXE"} and rerun the launcher's version command.
-Start Jupyter from the terminal containing the exports. After changing the
-launcher environment, stop Jupyter and start it again from that terminal.
+share the course directory. Keep inputs and run directories inside the course
+checkout so the helper can mount them together.
+\item \textbf{Image unavailable:} check \texttt{IMAGE} in the setup cell and
+run \texttt{docker pull} with that exact reference. Retry the setup cell. In
+native mode, check the explicit \texttt{EXECUTABLE} path instead.
 \item \textbf{Python imports fail:} activate the workshop environment, start
 its Jupyter, and restart the notebook kernel.
 \end{itemize}

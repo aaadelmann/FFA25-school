@@ -14,6 +14,8 @@ import re
 import shlex
 import shutil
 import subprocess
+import uuid
+import sys
 
 import h5py
 import matplotlib.pyplot as plt
@@ -104,14 +106,88 @@ def settings_table(case):
     return pd.DataFrame(values.items(), columns=['Parameter', 'Value'])
 
 
-def find_executable(value=None):
-    value = value or os.environ.get('OPALX_EXE') or shutil.which('opalx')
+def find_executable(value):
     if not value:
-        raise FileNotFoundError('Set OPALX_EXE to an OPALX build with native FFA COF full tunes.')
+        raise ValueError('Native mode requires an explicit EXECUTABLE path.')
     path = Path(value).expanduser().resolve()
     if not path.is_file() or not os.access(path, os.X_OK):
         raise FileNotFoundError(f'OPALX executable is unavailable: {path}')
     return path
+
+
+def _execution_env():
+    env = dict(os.environ, OMP_NUM_THREADS='1', OMP_PROC_BIND='false')
+    env.pop('OPALX_TEST_PASSIVE_RING_PROBES', None)
+    # A separately installed Docker client still needs Desktop's credential helper.
+    desktop_bin = Path('/Applications/Docker.app/Contents/Resources/bin')
+    if sys.platform == 'darwin' and desktop_bin.is_dir():
+        env['PATH'] = str(desktop_bin)+os.pathsep+env.get('PATH', '')
+    return env
+
+
+def execution_command(path, execution, arguments=None, container_name=None):
+    """Build an argument list; never route Docker through a native executable."""
+    arguments = ['--info', '1', 'school.in'] if arguments is None else arguments
+    if execution['backend'] == 'native':
+        return [*execution['launcher'], execution['executable'], *arguments]
+    if execution['backend'] != 'docker':
+        raise ValueError('BACKEND must be docker or native')
+    path = Path(path).resolve()
+    root = Path(execution['course_root']).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError('Docker run directory must be inside the course root')
+    command = [execution['docker'], 'run', '--rm', '--pull=never']
+    if container_name: command += ['--name', container_name]
+    return [*command, '--user', f'{os.getuid()}:{os.getgid()}',
+            '-e', 'OPALX_NP=1', '-e', 'OMP_NUM_THREADS=1', '-e', 'OMP_PROC_BIND=false',
+            '--mount', f'type=bind,src={root},dst={root}', '--workdir', str(path),
+            execution['image_id'], *arguments]
+
+
+def configure_execution(backend='docker', image='ghcr.io/opalx-project/opalx:cpu',
+                        executable=None, course_root=None):
+    """Check the selected backend once and pin Docker to its local image ID."""
+    if backend not in {'docker', 'native'}:
+        raise ValueError('BACKEND must be docker or native')
+    env = _execution_env()
+    if backend == 'native':
+        launcher = shlex.split(os.environ.get('OPALX_LAUNCHER', ''))
+        options = mpi_flags()
+        if options and not launcher: launcher = ['mpiexec', '-n', '1']
+        execution = dict(backend='native', executable=str(find_executable(executable)),
+                         launcher=[*launcher, *options])
+        root = Path(course_root or HERE.parent).resolve()
+    else:
+        docker = shutil.which('docker', path=env.get('PATH'))
+        if not docker: raise FileNotFoundError('Docker is unavailable. Install and start Docker Desktop.')
+        root = Path(course_root or HERE.parent).resolve()
+        execution = dict(backend='docker', docker=docker, course_root=str(root), image=image)
+        step = 'Docker server is unavailable; start Docker Desktop'
+        try:
+            subprocess.run([docker, 'info', '--format', '{{.OSType}}'], env=env,
+                           capture_output=True, text=True, check=True, timeout=30)
+            step = f'Docker image is unavailable; run: docker pull {image}'
+            info = json.loads(subprocess.run([docker, 'image', 'inspect', image], env=env,
+                              capture_output=True, text=True, check=True, timeout=30).stdout)[0]
+            execution.update(image_id=info['Id'], image_digest=(info.get('RepoDigests') or [None])[0],
+                             architecture=info['Architecture'])
+        except (OSError, subprocess.SubprocessError) as error:
+            raise RuntimeError(step+'\n'+str(getattr(error, 'stderr', '') or error)) from error
+    name = 'ffa-school-check-'+uuid.uuid4().hex[:12] if backend == 'docker' else None
+    command = execution_command(root, execution, ['--version-full', '--info', '5'], name)
+    try:
+        version = subprocess.run(command, cwd=root, env=env, capture_output=True,
+                                 text=True, check=True, timeout=60).stdout
+    except subprocess.TimeoutExpired as error:
+        if name: subprocess.run([execution['docker'], 'rm', '-f', name], env=env, capture_output=True, timeout=30)
+        raise RuntimeError('OPALX backend version check timed out') from error
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError('OPALX backend version check failed: '+str(getattr(error, 'stderr', '') or error)) from error
+    match = re.search(r'Version\s+([0-9][^\s,]*)', version)
+    revision = re.search(r'git rev\.\s+([0-9a-f]{7,40})', version)
+    execution.update(opalx_version=match[1] if match else 'unknown',
+                     revision=revision[1] if revision else 'unknown')
+    return execution
 
 
 def mpi_flags():
@@ -278,27 +354,28 @@ def prepare_cof(case, path, dt=None, fd=None, guess_offset=(0.,0.,0.,0.)):
     return path
 
 
-def execute(path, executable, flags=None, timeout=2400):
-    ranks = 1
+def execute(path, execution, timeout=2400):
     path = Path(path).resolve()
     if (path/'run.log').exists(): raise FileExistsError('Use a fresh run directory; run.log exists')
-    env = dict(os.environ, OMP_NUM_THREADS='1', OMP_PROC_BIND='false')
-    env.pop('OPALX_TEST_PASSIVE_RING_PROBES', None)
-    launcher = shlex.split(os.environ.get('OPALX_LAUNCHER', ''))
-    options = mpi_flags() if flags is None else flags
-    if options and not launcher: launcher = ['mpiexec', '-n', '1']
-    command = [*launcher, *options, str(find_executable(executable)), '--info', '1', 'school.in']
-    print(f'Running {path.name} on {ranks} rank(s); log: {path / "run.log"}', flush=True)
+    env = _execution_env()
+    name = 'ffa-school-run-'+uuid.uuid4().hex[:12] if execution['backend'] == 'docker' else None
+    command = execution_command(path, execution, container_name=name)
+    manifest = json.loads((path/'manifest.json').read_text())
+    manifest.update(command=command, ranks=1, execution=execution)
+    (path/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+    print(f"Running {path.name} with {execution['backend']} on 1 rank; log: {path / 'run.log'}", flush=True)
     with (path/'run.log').open('w') as stream:
         try:
             subprocess.run(command, cwd=path, env=env, stdout=stream, stderr=subprocess.STDOUT,
                            check=True, timeout=timeout)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        except subprocess.TimeoutExpired as error:
+            if name:
+                subprocess.run([execution['docker'], 'rm', '-f', name], env=env,
+                               capture_output=True, timeout=30)
+            raise RuntimeError(f'OPALX timed out; inspect {path / "run.log"}') from error
+        except (OSError, subprocess.CalledProcessError) as error:
             raise RuntimeError(f'OPALX failed; inspect {path / "run.log"}\n'
                                +(path/'run.log').read_text()[-4000:]) from error
-    manifest = json.loads((path/'manifest.json').read_text())
-    manifest.update(command=command, ranks=ranks)
-    (path/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
 
 
 def read_cof(case, path):

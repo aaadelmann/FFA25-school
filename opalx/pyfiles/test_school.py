@@ -1,5 +1,8 @@
 """Reader/identity regressions with analytic synthetic HDF5, no OPALX required."""
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 import re
 import tempfile
@@ -9,6 +12,8 @@ import textwrap
 
 import h5py
 import numpy as np
+import nbformat
+import execute_notebook
 
 import school
 from check_constants import evaluated_input
@@ -129,6 +134,103 @@ class SchoolReaderTest(unittest.TestCase):
             (root/case.template).write_text(wrapped)
             with patch.object(school,'HERE',root): actual = school.lattice_text(case)
         self.assertEqual(re.sub(r'\s+','',actual),re.sub(r'\s+','',expected))
+
+
+    def test_docker_is_checked_and_pinned_independently_of_native_environment(self):
+        image_info = [dict(Id='sha256:fixed-image', RepoDigests=['registry/opalx@sha256:fixed-digest'],
+                           Architecture='arm64')]
+        responses = [subprocess.CompletedProcess([],0,'linux\n',''),
+                     subprocess.CompletedProcess([],0,json.dumps(image_info),''),
+                     subprocess.CompletedProcess([],0,'OPAL Version 1.1.0, git rev. abcdef123456\n','')]
+        with tempfile.TemporaryDirectory(prefix='school with spaces ') as directory:
+            root = Path(directory).resolve()
+            with patch.dict(os.environ, {'OPALX_EXE':'/unwanted/local/opalx',
+                                         'OPALX_LAUNCHER':'unwanted-launcher', 'OPALX_MPI_FLAGS':'--unwanted'}), \
+                 patch.object(school.shutil,'which',return_value='/fake/docker'), \
+                 patch.object(school.subprocess,'run',side_effect=responses) as run:
+                execution = school.configure_execution(course_root=root)
+            self.assertEqual(execution['backend'],'docker')
+            self.assertEqual(execution['revision'],'abcdef123456')
+            self.assertEqual(execution['image_digest'],'registry/opalx@sha256:fixed-digest')
+            self.assertEqual(run.call_count,3)
+            path = root/'nested run';path.mkdir()
+            command = school.execution_command(path,execution)
+            self.assertIn('sha256:fixed-image',command)
+            self.assertNotIn(execution['image'],command)
+            self.assertIn(f'type=bind,src={root},dst={root}',command)
+            self.assertEqual(command[command.index('--workdir')+1],str(path))
+            self.assertIn('OPALX_NP=1',command)
+            self.assertIn('OMP_NUM_THREADS=1',command)
+            self.assertIn('--pull=never',command)
+            with self.assertRaisesRegex(ValueError,'inside the course root'):
+                school.execution_command(root.parent,execution)
+            # A run records the immutable selection, not just a mutable image tag.
+            (path/'manifest.json').write_text('{}')
+            with patch.object(school.subprocess,'run',return_value=subprocess.CompletedProcess([],0)):
+                school.execute(path,execution)
+            manifest = json.loads((path/'manifest.json').read_text())
+            self.assertEqual(manifest['execution'],execution)
+            self.assertIn(execution['image_id'],manifest['command'])
+
+    def test_docker_failure_never_falls_back_to_native_or_pulls(self):
+        with patch.object(school.shutil,'which',return_value=None), \
+             patch.object(school,'find_executable') as native:
+            with self.assertRaisesRegex(FileNotFoundError,'Docker is unavailable'):
+                school.configure_execution()
+            native.assert_not_called()
+        for failure,diagnostic in [(0,'Docker server is unavailable'),(1,'Docker image is unavailable')]:
+            responses = [subprocess.CompletedProcess([],0,'linux','')]*failure
+            responses += [subprocess.CalledProcessError(1,['docker'],stderr='unavailable')]
+            with patch.object(school.shutil,'which',return_value='/fake/docker'), \
+                 patch.object(school.subprocess,'run',side_effect=responses) as run, \
+                 patch.object(school,'find_executable') as native:
+                with self.assertRaisesRegex(RuntimeError,diagnostic):school.configure_execution()
+                native.assert_not_called()
+                self.assertFalse(any('pull' in c.args[0] for c in run.call_args_list))
+
+    def test_native_mode_requires_explicit_executable(self):
+        with patch.dict(os.environ, {'OPALX_EXE':sys.executable}):
+            with self.assertRaisesRegex(ValueError,'explicit EXECUTABLE'):
+                school.configure_execution(backend='native')
+        with patch.dict(os.environ, {'OPALX_LAUNCHER':'', 'OPALX_MPI_FLAGS':''}), \
+             patch.object(school.subprocess,'run',return_value=subprocess.CompletedProcess(
+                 [],0,'OPAL Version 1.1.0, git rev. abcdef123456','')):
+            execution = school.configure_execution(backend='native',executable=sys.executable)
+        self.assertEqual(school.execution_command(school.HERE,execution)[0],str(Path(sys.executable).resolve()))
+        self.assertNotIn('docker',execution)
+
+    def test_docker_timeout_removes_only_the_current_named_container(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve();(root/'manifest.json').write_text('{}')
+            execution = dict(backend='docker', docker='/fake/docker',course_root=str(root),image_id='sha256:fixed')
+            with patch.object(school.subprocess,'run',side_effect=[
+                    subprocess.TimeoutExpired(['docker'],1),subprocess.CompletedProcess([],0)]) as run:
+                with self.assertRaisesRegex(RuntimeError,'timed out'):school.execute(root,execution,timeout=1)
+            started = run.call_args_list[0].args[0]
+            cleanup = run.call_args_list[1].args[0]
+            name = started[started.index('--name')+1]
+            self.assertTrue(name.startswith('ffa-school-run-'))
+            self.assertEqual(cleanup,['/fake/docker','rm','-f',name])
+
+
+    def test_cli_native_override_keeps_docker_notebook_and_labels_local_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'opalx/runs').mkdir(parents=True)
+            for name in execute_notebook.LEGACY:(root/name).write_text('original')
+            source=root/'opalx/FFA26_OPALX.ipynb'
+            nb=nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell(
+                'BACKEND = "docker"\nIMAGE = "cpu"\nEXECUTABLE = None')])
+            nbformat.write(nb,source);before=source.read_bytes()
+            with patch.object(execute_notebook,'ROOT',root), \
+                 patch.object(execute_notebook,'KernelManager') as manager, \
+                 patch.object(execute_notebook,'NotebookClient'), \
+                 patch.object(sys,'argv',['execute_notebook.py','--backend','native','--executable',sys.executable]):
+                manager.return_value.has_kernel=False
+                execute_notebook.main()
+            self.assertEqual(source.read_bytes(),before)
+            copy=nbformat.read(root/'opalx/runs/notebook-override-executed.ipynb',as_version=4)
+            self.assertIn("BACKEND = 'native'",copy.cells[0].source)
+            self.assertIn(str(Path(sys.executable).resolve()),copy.cells[0].source)
 
 
 if __name__=='__main__': unittest.main()
