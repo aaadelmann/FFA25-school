@@ -1,0 +1,167 @@
+\subsubsection{How OPALX calculates the one-turn matrix}
+\label{sec:sc-one-turn-matrix}
+The one-turn matrix answers a local question: if a particle starts a little
+away from the closed orbit, how does that small displacement change after
+one revolution? OPALX computes this matrix by differentiating a numerically
+tracked return map. It uses the full nonlinear external magnetic fields for
+each trajectory, then extracts their \emph{linear} response near the closed
+orbit. The native \texttt{COF} calculation shown here has no space charge.
+It provides the zero-current reference for the KV and particle comparisons.
+
+\paragraph{Define the observation section and coordinates.}
+A return map must start and end at the same observation section. Here that
+section is the plane $Z=0$, crossed in the forward direction. The section's
+local axes coincide with the global axes at launch: $x_{\rm sec}=X$,
+$y_{\rm sec}=Y$, and its forward axis is $Z$. In particular, its horizontal
+coordinate is radial at launch; it differs from the moving orbit-normal
+coordinate used in the KV kicks. OPALX stores the transverse state as
+\begin{equation}
+ \vect u=\begin{pmatrix}x_{\rm sec}\\\pi_{x,\rm sec}\\
+                        y_{\rm sec}\\\pi_{y,\rm sec}\end{pmatrix},
+ \qquad \pi_{x,\rm sec}=\frac{p_{x,\rm sec}}{mc},\qquad
+        \pi_{y,\rm sec}=\frac{p_{y,\rm sec}}{mc}.
+ \label{eq:cof-coordinates}
+\end{equation}
+Positions are in metres; the two normalized \emph{mechanical momenta} are
+dimensionless. They are not the slopes $x'$ and $y'$. At fixed kinetic energy,
+the total normalized momentum is $P_\star=\beta\gamma=0.16044471664$ and each
+perturbed launch uses
+\begin{equation}
+ \pi_{z,\rm sec}=+\sqrt{P_\star^2-\pi_{x,\rm sec}^2
+                                      -\pi_{y,\rm sec}^2}.
+ \label{eq:cof-longitudinal-momentum}
+\end{equation}
+Thus changing a transverse momentum does not change the launch energy.
+This construction gives a four-dimensional transverse map at fixed energy,
+rather than a six-dimensional map including arrival time and energy spread.
+
+\paragraph{Track the return map and find its fixed point.}
+Write the result of one directed return as $\mathcal F(\vect u)$.
+OPALX launches a ray from the section, tracks it through the ring, and detects
+the next forward return after the ray has left the launch neighbourhood.
+It brackets the section crossing and refines its time by bisection, advancing
+the ray again to each trial time. Every perturbed ray therefore ends on the
+same geometric section, even if its flight time differs slightly. Ending
+all rays after a common, approximate revolution time would introduce an
+arrival-time displacement into the transverse map.
+
+The closed orbit is the fixed point $\vect u_\star$ satisfying
+\begin{equation}
+ \mathcal F(\vect u_\star)=\vect u_\star.
+ \label{eq:cof-fixed-point}
+\end{equation}
+The \texttt{COF} command solves this condition with Newton corrections and a
+line search. At a trial state $\vect u$, the correction obeys
+\begin{equation}
+ (M-\mathbb I)\,\delta\vect u
+       =-[\mathcal F(\vect u)-\vect u],
+ \label{eq:cof-newton}
+\end{equation}
+where $M$ is the derivative of $\mathcal F$ at that trial state. OPALX scales
+the coordinates when solving this system, reduces the correction when
+necessary, and verifies convergence with a fresh return-map evaluation.
+For this machine, the converged reference state is
+\begin{equation}
+ \vect u_\star=\begin{pmatrix}
+ -0.0270744445304\ \mathrm m\\
+  0.0162803888787\\0\ \mathrm m\\0
+ \end{pmatrix},\qquad
+ \pi_{z,\star}=0.159616590728.
+ \label{eq:cof-reference-state}
+\end{equation}
+Its radius is $R_0+x_{\rm sec,\star}=4.39292555547$ m. The nonzero horizontal
+momentum shows that the orbit is not tangent to the placement circle at the
+launch point.
+
+\paragraph{Differentiate with paired rays.}
+For a small perturbation $\delta\vect u$ about the closed orbit,
+\begin{equation}
+ \mathcal F(\vect u_\star+\delta\vect u)-\vect u_\star
+       =M\,\delta\vect u+\mathcal O(\|\delta\vect u\|^2),\qquad
+ M_{ij}=\left.\frac{\partial\mathcal F_i}{\partial u_j}
+                                                   \right|_{\vect u_\star}.
+ \label{eq:cof-linearization}
+\end{equation}
+OPALX perturbs one coordinate at a time, leaving the other three fixed, and
+tracks both signs of that perturbation. Column $j$ follows from the centred
+finite difference
+\begin{equation}
+ \boxed{M_{ij}\simeq
+ \frac{\mathcal F_i(\vect u_\star+h_j\vect e_j)
+             -\mathcal F_i(\vect u_\star-h_j\vect e_j)}{2h_j}.}
+ \label{eq:cof-finite-difference}
+\end{equation}
+The vector $\vect e_j$ selects coordinate $j$. Four columns require eight
+perturbed return trajectories. The subtraction removes the common reference
+motion; dividing by $2h_j$ measures the response per unit launch perturbation.
+The \texttt{FDSTEP} values set $h_j$. A large perturbation includes nonlinear
+motion, whereas a very small one amplifies tracking and roundoff errors.
+Both the tracking step and the perturbations need convergence checks.
+
+\paragraph{The matrix for the 16-cell, 12 MeV machine.}
+The ray integrator is DOP853. The refined native calculation uses
+\texttt{DT}=4 ns, position perturbations of $5\ \mu$m, and normalized-momentum
+perturbations $5\times10^{-6}P_\star=8.0222\times10^{-7}$.
+The resulting matrix, in exactly the coordinate order of
+Eq.~\eqref{eq:cof-coordinates}, is
+\begin{equation}
+ \boxed{M\simeq\begin{pmatrix}
+ -0.81100424 & 3.14919254 & 0 & 0\\
+ -0.09038064 &-0.88208415 & 0 & 0\\
+ 0 & 0 &-0.92829272 & 6.05362895\\
+ 0 & 0 &-0.06987036 &-0.62160435
+ \end{pmatrix}.}
+ \label{eq:cof-machine-matrix}
+\end{equation}
+Within each $2\times2$ block, the diagonal entries are dimensionless, the
+upper-right entry has units m, and the lower-left entry has units m$^{-1}$.
+For example, a 1 mm horizontal position perturbation with no initial change
+in transverse momentum returns, to first order, as a $-0.811$ mm position
+perturbation and a $-9.04\times10^{-5}$ change in $p_x/(mc)$.
+The zero off-diagonal blocks express horizontal--vertical decoupling of the
+linear motion about this midplane orbit. They do not imply that the nonlinear
+motion at finite amplitude is uncoupled.
+
+The determinants of the two blocks, computed before rounding the displayed
+entries, are $\det M_x=0.9999999990$ and $\det M_y=1.0000000044$.
+Repeating the calculation with 8 ns tracking steps and twice the
+finite-difference perturbations gives a largest change of
+$5.8\times10^{-7}$ m in the vertical upper-right matrix element; the
+horizontal and vertical tune changes are
+$5.2\times10^{-11}$ and $8.8\times10^{-9}$. This joint refinement supports
+the zero-current reference but does not separate the two error sources or
+establish every displayed matrix digit independently. DOP853 is the ray
+integrator selected for this \texttt{COF} calculation; the collective beam
+runs use the Boris integrator described below.
+
+\paragraph{Extract the tunes and recover the missing integer.}
+For each stable, approximately area-preserving plane block,
+\begin{equation}
+ \lambda_{j,\pm}\simeq e^{\pm i\mu_{j,1}},\qquad
+ \cos\mu_{j,1}\simeq\frac{\operatorname{Tr}M_j}{2},\qquad
+ q_j=\frac{\mu_{j,1}}{2\pi}.
+ \label{eq:cof-eigenphase}
+\end{equation}
+Here $\mu_{j,1}$ is the principal one-turn eigenphase. In the numerical
+extraction OPALX normalizes by $\sqrt{\det M_j}$ when determining the cosine
+and uses the sign of the upper-right entry to orient the phase. For this
+machine the fractional tunes are $q_x=0.41066045$ and $q_y=0.39111213$.
+The trace alone gives a cosine, with a sign ambiguity for the phase, and
+eigenvalues cannot distinguish a phase from that phase plus an integer
+multiple of $2\pi$.
+
+To recover the full tune, OPALX also follows the reference ray and paired
+shadow rays through the ring, projects their separation onto the local
+horizontal normal and the vertical direction, and unwraps the associated
+linear phase. It checks the phase sampling and consistency with the endpoint
+matrix. The winding supplies the integer part; the accurate endpoint matrix
+supplies the fractional part. The result is
+\begin{equation}
+ \boxed{Q_x=3.41066045,\qquad Q_y=3.39111213.}
+ \label{eq:cof-full-tunes}
+\end{equation}
+This full-tune reconstruction assumes uncoupled planar motion. It adds
+information that is absent from the one-turn eigenvalues alone. These are
+zero-current, infinitesimal-amplitude tunes; the finite-amplitude NAFF
+footprints and the intensity-dependent KV tunes address the additional
+physics discussed in the following subsections.

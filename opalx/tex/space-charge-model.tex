@@ -1,10 +1,10 @@
 \subsection{Space charge: from a KV beam to particle tracking}
 \label{sec:space-charge}
-A proton beam repels itself. The electric self-force pushes particles away from
+The electric self-force pushes particles away from
 the beam centre and reduces the restoring force of the magnets. Consequently,
 the transverse oscillations usually slow down: their tunes decrease with beam
 current. This section derives an analytic prediction and compares it with an
-OPALX simulation of the same 16-cell lattice. The analytic model explains the
+OPALX simulation of the same 16-cell FFA lattice. The analytic model explains the
 mechanism; the particle calculation tests the approximations.
 
 Here $s$ denotes arc length along the \emph{magnetic closed orbit}, rather than
@@ -208,6 +208,8 @@ first-order optics gives the useful estimate
 The minus sign explains tune depression. The full matched calculation also
 allows the envelope and therefore $g_j$ to change with current.
 
+\input{one-turn-matrix}
+
 \subsubsection{What OPALX calculates with FFT2D5}
 OPALX follows individual macroparticles in the nonlinear magnetic fields
 introduced in Section~2. A macroparticle represents many protons: with
@@ -304,8 +306,11 @@ The time step is 50 ps. Short pilot comparisons checked particle IDs, finite
 coordinates, charge, one versus two GPU ranks, and 50 versus 25 ps steps.
 The latter comparison gives a maximum position difference of $0.276\ \mu$m
 after 25 ns. These are useful implementation checks, but do not establish
-long-time tune convergence. The target record is 128 turns; the preliminary
-comparison below uses the same first 15 turns in every case.
+long-time tune convergence. The zero-current run has completed its 128-turn
+record. Its NAFF analysis uses the 127 complete turns from azimuth 0.25 to
+127.25 turns, covered by every selected particle. The charged cases have not
+completed the target record; their plotted estimates retain the preliminary
+15-turn interval. The different record lengths are labelled explicitly.
 
 \begin{table}[ht]
 \centering
@@ -331,8 +336,10 @@ We estimate the tunes with Numerical Analysis of Fundamental Frequencies
 Hann window of order two. The horizontal closed-orbit scalloping is removed
 before interpolation; the central-slice centroid is removed to measure
 incoherent particle tunes. All four cases use 768 corresponding particles
-from the central longitudinal slice and the same 15-turn interval, starting
-one-quarter turn after launch. Corresponding particles have the same
+from the central longitudinal slice, starting one-quarter turn after launch.
+The zero-current footprint now uses 127 turns from the completed 128-turn
+record; the three charged footprints use their first 15 turns. Corresponding
+particles have the same
 normalized launch directions; matching changes their physical coordinates
 slightly as the current increases.
 
@@ -385,8 +392,9 @@ and a nonideal self-field can produce a footprint.
 \includegraphics[width=.76\textwidth]{figures/tune-footprint.pdf}
 \caption{Preliminary FFA tune footprints at bunch currents 0, 4.749, 8.701 and
 10.399 mA, labelled next to their particle clouds. Each cloud contains NAFF
-tunes from 768 central-slice particles over the same 15 turns; red crosses are
-the corresponding analytic KV predictions. The colour bar gives the
+tunes from 768 central-slice particles: 127 turns for the completed zero-current
+record and 15 preliminary turns for each charged case. Red crosses are the
+corresponding analytic KV predictions. The colour bar gives the
 \emph{initial horizontal normalized-action fraction}
 $f_x=(u_x^2+v_x^2)/4$: purple means mainly vertical action, yellow mainly
 horizontal action, and $f_x=0.5$ equal normalized actions. It does not encode
@@ -407,43 +415,44 @@ baseline:
  \end{aligned}
  \label{eq:sc-baseline}
 \end{equation}
-This definition is a difference of medians, which need not equal the median
-of the per-particle differences. It also removes the offset between the
-finite-amplitude zero-current particle median and the linear zero-amplitude
-KV prediction. That offset is about $7.35\times10^{-4}$ vertically in the
-present short record.
+This difference of medians need not equal the median paired-particle shift.
+The completed zero-current record gives $Q_x=3.410690$ and $Q_y=3.391813$;
+its vertical offset from the linear KV prediction is $7.01\times10^{-4}$.
+The plots subtract this long-record baseline. Charged estimates still use
+15 turns, so the comparison mixes record lengths and remains preliminary.
+The original common 15-turn comparison is retained with the companion data.
 
-\clearpage
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.49\textwidth]{figures/preliminary-dQx.pdf}\hfill
 \includegraphics[width=.49\textwidth]{figures/preliminary-dQy.pdf}
-\caption{Preliminary tune shifts relative to each method's own zero-current
-baseline, for the same 15-turn records and central-slice particles as
-Fig.~\ref{fig:sc-footprint}. Dots are differences of NAFF median tunes; black
-curves connect the matched linear KV predictions. Bars give the 5th--95th
-percentile particle footprint at each current, shifted by the zero-current
-median. They are \emph{not} uncertainty bars on the median or a distribution
-of paired-particle tune differences. The NAFF and KV results show similar
-tune depression in both planes.}
+\caption{Tune shifts for 768 central-slice particles, subtracting each method's
+own zero-current baseline. The NAFF baseline uses 127 turns of the completed
+zero-current run; the charged estimates use 15 preliminary turns. Dots are
+NAFF median shifts and black curves are matched linear KV predictions.
+Bars show the 5th--95th percentile particle footprint shifted by the
+zero-current median, not confidence intervals or paired-particle shifts.
+The charged results still require longer records.}
 \label{fig:sc-shifts}
 \end{figure}
 
 At 10.399 mA the median-based shifts are approximately
-$\Delta Q_x=-0.004886$ and $\Delta Q_y=-0.012680$, compared with KV values
-$-0.004939$ and $-0.013122$. The simulated depressions are about 1.1\% and
-3.4\% smaller in magnitude. This is an encouraging preliminary trend, not
-a percent-level accuracy result. Changing the NAFF record from 11 to 15 turns
-changes individual tunes by up to $7.6\times10^{-5}$ horizontally and
-$3.9\times10^{-4}$ vertically at the 95th percentile. A short-window estimate
-can move when several stationary spectral lines overlap; that alone does
-not demonstrate a changing fundamental tune or chaotic diffusion.
+$\Delta Q_x=-0.004868$ and $\Delta Q_y=-0.012646$, compared with KV values
+$-0.004939$ and $-0.013122$. The simulated depressions are about
+1.4\% and 3.6\% smaller in magnitude. These differences combine a
+long-record zero-current baseline with short charged records; they do not
+establish percent-level agreement after record-length convergence.
 
-Before assigning the residual difference to a physical mechanism, compare
-longer records, check the tune footprint against record length, and test
-particle number, field-grid resolution and timestep. The KV model assumes
-linear external focusing and a uniform elliptical density with no
-longitudinal self-force. OPALX retains nonlinear external fields and evolves
-a finite macroparticle distribution on a mesh, while using the same
-longitudinal-force approximation here. These distinctions explain what the
-comparison tests, without identifying a cause for the remaining discrepancy.
+For the completed zero-current run, the first and last 63-turn estimates
+differ at the 95th percentile by $1.8\times10^{-5}$ horizontally and
+$8.8\times10^{-5}$ vertically. Reprocessing the first 15 turns reproduces the
+earlier estimates within $3\times10^{-14}$. For the charged cases, 11- versus
+15-turn estimates differ by up to $7.6\times10^{-5}$ and $3.9\times10^{-4}$,
+respectively. Several stationary spectral lines can shift short-window NAFF
+estimates; this alone does not establish tune modulation or chaotic diffusion.
+
+Complete the charged records and test particle number, mesh resolution and
+timestep before interpreting the residual differences. Recall that KV assumes
+linear focusing and a uniform elliptical density. OPALX evolves a finite
+macroparticle distribution in nonlinear external fields on a mesh. Both models
+neglect the longitudinal self-force in this comparison.
