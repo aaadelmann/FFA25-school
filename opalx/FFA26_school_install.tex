@@ -35,16 +35,20 @@ need to compile OPALX or install MPI locally. These instructions follow the
 \item \textbf{macOS:} install
 \href{https://docs.docker.com/desktop/setup/install/mac-install/}{Docker Desktop for Mac},
 choosing Apple silicon or Intel to match your machine. Start Docker Desktop.
+If a separate Docker client cannot find \texttt{docker-credential-desktop},
+add the bundled tools to this terminal's path:
+\begin{commands}
+export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
+\end{commands}
 \item \textbf{Windows:} install
 \href{https://docs.docker.com/desktop/setup/install/windows-install/}{Docker Desktop with the WSL 2 backend}
-and enable its \href{https://docs.docker.com/desktop/features/wsl/}{integration with an Ubuntu WSL distribution}. Run all commands
-below in the \emph{Ubuntu/WSL terminal}, including Python and Jupyter commands.
-Keep the course in your Linux home directory.
-\item \textbf{Linux:} install Docker using the
-\href{https://docs.docker.com/engine/install/}{instructions for your distribution}.
-Follow the
+and enable its \href{https://docs.docker.com/desktop/features/wsl/}{Ubuntu WSL integration}.
+Run all commands below in the \emph{Ubuntu/WSL terminal}, including Python
+and Jupyter. Keep the course in your Linux home directory.
+\item \textbf{Linux:} follow the
+\href{https://docs.docker.com/engine/install/}{installation} and
 \href{https://docs.docker.com/engine/install/linux-postinstall/}{post-installation instructions}
-so your normal user can run Docker without \texttt{sudo}.
+to run Docker as your normal user without \texttt{sudo}.
 \end{itemize}
 
 The remaining commands use Bash or Zsh: Terminal on macOS/Linux or Ubuntu
@@ -80,8 +84,6 @@ export OPALX_IMAGE="$(docker image inspect \
   --format '{{index .RepoDigests 0}}' "$OPALX_IMAGE")"
 printf '%s\n' "$OPALX_IMAGE"
 \end{commands}
-Keep this \texttt{ghcr.io/...@sha256:...} reference with your results. A version
-number alone does not identify the build.
 
 \clearpage
 \section{Prepare the course and Python environment}
